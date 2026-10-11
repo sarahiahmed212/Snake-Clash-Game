@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snake Clash!</title>
+<style>
+    body {
+        margin: 0; background: #111; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; min-height: 100vh;
+        font-family: Arial, sans-serif; color: #fff; overflow: hidden;
+    }
+    h1 { margin: 5px 0; font-size: 1.5em; color: #D745EE; }
+    #gameContainer {
+        position: relative; box-shadow: 0 0 30px rgba(215, 69, 238, 0.3);
+        border: 3px solid #333; border-radius: 6px;
+    }
+    canvas { background: #000; display: block; }
+    #startOverlay, #gameOverOverlay {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
+        justify-content: center; align-items: center; z-index: 10;
+    }
+    #gameOverOverlay { display: none; }
+    button {
+        padding: 12px 28px; font-size: 1.2em; font-weight: bold; cursor: pointer;
+        border: 2px solid #ED4B9C; border-radius: 6px; background: #D745EE; color: #fff;
+    }
+    button:hover { background: #ED4B9C; }
+    .hint { margin-top: 15px; color: #aaa; font-size: 0.9em; text-align: center; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>Snake Clash! 🐍</h1>
+<div id="gameContainer">
+    <canvas id="c" width="1000" height="700"></canvas>
+    
+    <div id="startOverlay">
+        <h2 style="color:#D745EE; margin-bottom:10px;">Snake Clash!</h2>
+        <button id="startBtn">START GAME</button>
+        <div class="hint">
+            Use <b>Arrow Keys</b> to move (+50px steps)<br>
+            Eat <b>Yellow Food</b> & <b>ss.gif</b> to grow & score!<br>
+            Avoid <b>bs.gif</b> bosses!
+        </div>
+    </div>
+
+    <div id="gameOverOverlay">
+        <h2 style="color:#D745EE; font-size:32px; margin:5px;">GAME OVER</h2>
+        <h3 id="scoreText" style="color:#ED4B9C; font-size:26px; margin:5px 0 20px 0;">Score : 0</h3>
+        <button id="restartBtn">PLAY AGAIN</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const OX = 500, OY = 350;
+
+function toScreen(x, y) { return { x: OX + x, y: OY - y }; }
+function dist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
+
+// Load actual local external gif files directly
+const loadImg = (src) => {
+    const i = new Image();
+    i.src = src;
+    return i;
+};
+
+const imgs = {
+    'snake.gif': loadImg('snake.gif'),
+    'ss.gif':    loadImg('ss.gif'),
+    'bs.gif':    loadImg('bs.gif'),
+    'skin.gif':  loadImg('skin.gif')
+};
+
+let player, t, s, gameover, started;
+let enemies, bigEnemies, foods, body;
+let timerInt, spawnInts, loopId;
+
+function resetGame() {
+    player = { x: 0, y: 0 };
+    t = 60; s = 0; gameover = false; started = true;
+    enemies = []; bigEnemies = []; foods = []; body = [];
+    
+    document.getElementById('startOverlay').style.display = 'none';
+    document.getElementById('gameOverOverlay').style.display = 'none';
+    window.focus();
+    
+    if (timerInt) clearInterval(timerInt);
+    if (spawnInts) spawnInts.forEach(clearInterval);
+    
+    timerInt = setInterval(() => {
+        if (!gameover && t > 0) t--;
+        else if (t <= 0) gameover = true;
+    }, 1000);
+    
+    spawnInts = [
+        setInterval(() => { if (!gameover && started) enemies.push({ x: (Math.random()*501|0)-250, y: (Math.random()*501|0)-250 }); }, 1000),
+        setInterval(() => { if (!gameover && started) bigEnemies.push({ x: (Math.random()*501|0)-250, y: (Math.random()*501|0)-250 }); }, 5000),
+        setInterval(() => { if (!gameover && started) foods.push({ x: (Math.random()*501|0)-250, y: (Math.random()*501|0)-250 }); }, 3000)
+    ];
+    
+    if (loopId) clearTimeout(loopId);
+    loop();
+}
+
+function handleKey(e) {
+    if (!started || gameover) return;
+    if (e.key === 'ArrowRight' || e.key === 'Right') { player.x += 50; e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'Left') { player.x -= 50; e.preventDefault(); }
+    else if (e.key === 'ArrowUp' || e.key === 'Up') { player.y += 50; e.preventDefault(); }
+    else if (e.key === 'ArrowDown' || e.key === 'Down') { player.y -= 50; e.preventDefault(); }
+}
+window.addEventListener('keydown', handleKey);
+
+function drawImgOrBox(key, x, y, size, fallbackCol) {
+    const pos = toScreen(x, y);
+    const img = imgs[key];
+    if (img && img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, pos.x - size, pos.y - size, size*2, size*2);
+    } else {
+        ctx.fillStyle = fallbackCol;
+        ctx.fillRect(pos.x - size, pos.y - size, size*2, size*2);
+    }
+}
+
+function loop() {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        enemies[i].x -= 2;
+        if (dist(enemies[i].x, enemies[i].y, player.x, player.y) < 50) {
+            enemies.splice(i, 1); s++; body.push({ x: 0, y: 0 });
+        }
+    }
+    for (let i = 0; i < bigEnemies.length; i++) {
+        bigEnemies[i].x -= 2;
+        if (dist(bigEnemies[i].x, bigEnemies[i].y, player.x, player.y) < 30) {
+            gameover = true;
+        }
+    }
+    for (let i = foods.length - 1; i >= 0; i--) {
+        if (dist(foods[i].x, foods[i].y, player.x, player.y) < 50) {
+            foods.splice(i, 1); s++; body.push({ x: 0, y: 0 });
+        }
+    }
+    let step = 40;
+    for (let i = 0; i < body.length; i++) {
+        body[i].x = player.x - step;
+        body[i].y = player.y;
+        step += 40;
+    }
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!gameover) {
+        foods.forEach(f => {
+            const p = toScreen(f.x, f.y);
+            ctx.fillStyle = '#FFEA00';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 12, 0, Math.PI*2);
+            ctx.fill();
+        });
+        enemies.forEach(e => drawImgOrBox('ss.gif', e.x, e.y, 22, 'green'));
+        bigEnemies.forEach(b => drawImgOrBox('bs.gif', b.x, b.y, 30, 'red'));
+        body.forEach(b => drawImgOrBox('skin.gif', b.x, b.y, 18, '#26D100'));
+        drawImgOrBox('snake.gif', player.x, player.y, 26, '#4CAF50');
+
+        const tp = toScreen(-350, 310);
+        ctx.fillStyle = '#D745EE'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('Time : ' + t, tp.x, tp.y);
+
+        const sp = toScreen(-350, 280);
+        ctx.fillStyle = '#ED4B9C'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('Score : ' + s, sp.x, sp.y);
+
+        loopId = setTimeout(loop, 10);
+    } else {
+        if (timerInt) clearInterval(timerInt);
+        if (spawnInts) spawnInts.forEach(clearInterval);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const go = toScreen(0, 20);
+        ctx.fillStyle = '#D745EE'; ctx.font = 'bold 30px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', go.x, go.y);
+        
+        const fs = toScreen(0, -20);
+        ctx.fillStyle = '#ED4B9C'; ctx.font = 'bold 30px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('Score : ' + s, fs.x, fs.y);
+        
+        document.getElementById('scoreText').textContent = 'Score : ' + s;
+        document.getElementById('gameOverOverlay').style.display = 'flex';
+    }
+}
+
+document.getElementById('startBtn').onclick = resetGame;
+document.getElementById('restartBtn').onclick = resetGame;
+</script>
+</body>
+</html>
